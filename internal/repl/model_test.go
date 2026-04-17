@@ -53,7 +53,7 @@ func TestREPLUnknownCommandDoesNotCrash(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
-		return bytes.Contains(b, []byte("unknown command"))
+		return bytes.Contains(bytes.ToLower(b), []byte("unknown command"))
 	}, teatest.WithDuration(2*time.Second))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlD})

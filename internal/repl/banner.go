@@ -3,6 +3,8 @@ package repl
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Banner returns the welcome banner shown when the REPL launches.
@@ -17,19 +19,32 @@ func Banner(version string) string {
 	// Hide the git "-dirty" marker from the welcome banner; it's still
 	// available via `lakshmi version` for debugging.
 	version = strings.TrimSuffix(version, "-dirty")
+
+	tape := lipgloss.NewStyle().Foreground(colDim).Render("   ▁ ▂ ▃ ▅ ▆ █  ") +
+		lipgloss.NewStyle().Foreground(colEmerald).Render("▲ NIFTY  ") +
+		lipgloss.NewStyle().Foreground(colEmerald).Render("▲ SENSEX  ") +
+		lipgloss.NewStyle().Foreground(colRose).Render("▼ USDINR  ") +
+		lipgloss.NewStyle().Foreground(colDim).Render("█ ▆ ▅ ▃ ▂ ▁")
+
+	border := lipgloss.NewStyle().Foreground(colSaffron)
+	logo := lipgloss.NewStyle().Foreground(colGold).Bold(true)
+	verStyle := lipgloss.NewStyle().Foreground(colMuted).Italic(true)
+
 	var b strings.Builder
-	//  Small "Slant"-style logo + a market tape motif above it.
-	b.WriteString("   ▁ ▂ ▃ ▅ ▆ █   ▲  NIFTY  ▲  SENSEX  ▼  USDINR   █ ▆ ▅ ▃ ▂ ▁\n")
-	b.WriteString("  ╭──────────────────────────────────────────────────────────╮\n")
-	b.WriteString("  │   _       _         _           _                        │\n")
-	b.WriteString("  │  | | __ _| | _____| |__  _ __ ___ (_)                    │\n")
-	b.WriteString("  │  | |/ _` | |/ / __| '_ \\| '_ ` _ \\| |                    │\n")
-	b.WriteString("  │  | | (_| |   <\\__ \\ | | | | | | | | |                    │\n")
-	b.WriteString("  │  |_|\\__,_|_|\\_\\___/_| |_|_| |_| |_|_|   " + pad(version, 15) + "│\n")
-	b.WriteString("  ╰──────────────────────────────────────────────────────────╯\n")
-	b.WriteString("     Stock market at your terminal.\n")
+	b.WriteString(tape + "\n")
+	b.WriteString(border.Render("  ╭──────────────────────────────────────────────────────────╮") + "\n")
+	b.WriteString(border.Render("  │  ") + logo.Render("   _       _         _           _                  ") + border.Render("    │") + "\n")
+	b.WriteString(border.Render("  │  ") + logo.Render("  | | __ _| | _____| |__  _ __ ___ (_)              ") + border.Render("    │") + "\n")
+	b.WriteString(border.Render("  │  ") + logo.Render("  | |/ _` | |/ / __| '_ \\| '_ ` _ \\| |              ") + border.Render("    │") + "\n")
+	b.WriteString(border.Render("  │  ") + logo.Render("  | | (_| |   <\\__ \\ | | | | | | | | |              ") + border.Render("    │") + "\n")
+	b.WriteString(border.Render("  │  ") + logo.Render("  |_|\\__,_|_|\\_\\___/_| |_|_| |_| |_|_|  ") + verStyle.Render(pad(version, 12)) + border.Render("    │") + "\n")
+	b.WriteString(border.Render("  ╰──────────────────────────────────────────────────────────╯") + "\n")
+	b.WriteString(StyleAccent.Render("     Stock market at your terminal.") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("     Type %s to list commands  ·  %s to quit.\n", "/help", "/exit"))
+	b.WriteString(StyleHint.Render("     Type ") + StyleAccent.Render("/help") +
+		StyleHint.Render(" to list commands  ·  ") + StyleAccent.Render("/exit") +
+		StyleHint.Render(" to quit.") + "\n")
+	_ = fmt.Sprintf // keep fmt import if needed
 	return b.String()
 }
 

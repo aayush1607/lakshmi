@@ -12,7 +12,10 @@ A conversational, grounded stock-analysis terminal for Indian markets. Single Go
 |---|---|---|
 | F1.1 REPL shell | ✅ | `₹ ›` prompt, history (↑/↓), `/help`, `/exit`, `:q` |
 | F1.2 Zerodha login | ✅ | Browser OAuth via Kite Connect, token in OS keychain |
-| F1.3+ | 🔜 | Holdings, config, agent loop, grounded output |
+| F1.3 Portfolio view | ✅ | `/portfolio` — holdings table with sort, totals, market-hours note |
+| F1.4 Local cache | ✅ | `~/.lakshmi/data/` cache with `--fresh` / `--no-cache`, `/cache` controls |
+| F1.5 Grounded ask | ✅ | `/ask`, free-form questions, `/why` trace, refusal when ungrounded |
+| F1.6+ | 🔜 | Verdict card, report export |
 
 ## Quick start (dev)
 
@@ -83,6 +86,122 @@ Kite tokens expire at **06:00 IST every day**, so you will log in once per tradi
 
 The same commands exist inside the REPL as `/login`, `/login status`, and `/logout`. The REPL flow is async: the prompt stays responsive while the browser is open, and the success line appears when the flow completes.
 
+## Viewing your portfolio
+
+Once logged in, you can see your Zerodha holdings:
+
+```bash
+./bin/lakshmi portfolio                 # sorted by weight (default)
+./bin/lakshmi portfolio --by pnl        # sorted by absolute P&L
+./bin/lakshmi portfolio --by symbol     # alphabetical
+# short aliases also work:
+./bin/lakshmi p
+./bin/lakshmi holdings
+```
+
+Inside the REPL:
+
+```
+₹ › /portfolio
+₹ › /p --by pnl
+₹ › /holdings
+```
+
+The table shows symbol, quantity, average cost, LTP, P&L (₹ and %), and portfolio weight. Beneath it: total invested, current value, day P&L, and overall P&L. The header notes whether the quote is **live** (09:15–15:30 IST, Mon–Fri) or a **post-close** snapshot. Read-only — Lakshmi has no code path that can place or modify orders.
+
+## Local cache
+
+Holdings, quotes, and fundamentals are cached under `~/.lakshmi/data/` as plain JSON files (`jq`-friendly, one entry per file). Cache-first semantics:
+
+| Data | In market hours (09:15–15:30 IST, Mon–Fri) | Off-hours |
+|---|---|---|
+| Holdings | always refetch | cache good for 24 h |
+| Quotes | always refetch | always serve cache (last close) |
+| Fundamentals | serve cache if < 1 h old | same |
+
+Flags and controls:
+
+```bash
+./bin/lakshmi portfolio --fresh     # bypass cache for this call
+./bin/lakshmi --no-cache portfolio  # no reads, no writes, this process only
+LAKSHMI_NO_CACHE=1 lakshmi          # same, as an env switch
+
+./bin/lakshmi cache status          # what's cached, disk use, freshness
+./bin/lakshmi cache clear           # wipe everything under data/
+./bin/lakshmi cache on              # re-enable at runtime (REPL also: /cache on)
+./bin/lakshmi cache off             # disable at runtime
+```
+
+Inside the REPL: `/cache status`, `/cache clear`, `/cache on`, `/cache off`. Toggling `/cache off` during a session means the next `/portfolio` will not read from disk and not write back — useful when debugging whether stale data is the problem.
+
+The cache is single-user, local, never uploaded anywhere. It never stores your Kite access token (that's in the OS keychain) or your API credentials (those stay in your shell env).
+
+## Asking questions (F1.5)
+
+Lakshmi answers free-form questions about your portfolio by running a small deterministic tool chain — read holdings, look up sectors, check the clock — and then asking an LLM to summarise, **with the rule that every factual claim must cite a tool result**. Uncited answers are rejected. Hallucinated sources trigger one stricter retry, then a refusal.
+
+### 1. Configure Azure AI Foundry
+
+```bash
+cat >> ~/.lakshmi.env <<'EOF'
+export AZURE_FOUNDRY_ENDPOINT=https://your-resource.openai.azure.com
+export AZURE_FOUNDRY_DEPLOYMENT=gpt-4o-mini        # whatever you deployed
+export AZURE_FOUNDRY_API_KEY=your_key_here
+# optional; defaults to 2024-10-21
+# export AZURE_FOUNDRY_API_VERSION=2024-10-21
+EOF
+source ~/.lakshmi.env
+```
+
+Lakshmi uses Azure Foundry's OpenAI-compatible REST surface. Any deployment that supports `response_format: json_schema` will work; `gpt-4o-mini` is a good cheap default.
+
+### 2. Ask something
+
+```bash
+./bin/lakshmi ask "what's my IT exposure?"
+```
+
+Or inside the REPL, either form works:
+
+```
+₹ › /ask what's my IT exposure?
+₹ › what's my IT exposure?
+```
+
+You get:
+
+- a 1–3 sentence answer with inline `[1]`, `[2]` citations,
+- a **Sources** block with tier labels (1 = official, 2 = broker, 3 = derived),
+- a **Confidence** line (high / medium / low).
+
+Follow-ups inherit session context:
+
+```
+₹ › what about energy?
+```
+
+The last three Q&A pairs are sent to the model so "what about X?" resolves correctly.
+
+### 3. Inspect the reasoning
+
+```
+₹ › /why
+```
+
+Prints every tool that ran, how long it took, and the token cost of the LLM call. Session-scoped — nothing is persisted.
+
+### Refusals are first-class
+
+If no grounded source supports an answer, Lakshmi says so instead of guessing:
+
+```
+I don't have a source for that.
+(why: no tool returned data relevant to the question)
+```
+
+This is by design. Sprint 2 adds more tools (quotes, filings, news); until then, questions outside "holdings + trivial sectors + time" will often refuse.
+
+
 ## Why Kite Connect (and not an MCP or scraper)
 
 - **You are the user.** The access token is issued to your Zerodha account directly — no middleman, no "share your creds with us" server.
@@ -119,8 +238,13 @@ The same commands exist inside the REPL as `/login`, `/login status`, and `/logo
 cmd/lakshmi/              CLI entry point + subcommand wiring
 internal/broker/          Broker interface, session store, keyring token store
 internal/broker/zerodha/  Kite Connect client (login flow, holdings)
+internal/cache/           File-backed local cache with per-namespace freshness rules
+internal/agent/           Grounded question-answering loop (plan/fetch/reason/shape + trace)
+internal/llm/             Chat-completion client (Azure AI Foundry)
+internal/tools/           Tool interface + Sprint 1 tools (holdings, sector, time)
 internal/config/          Env-based config loader
 internal/paths/           ~/.lakshmi/ layout
+internal/portfolio/       Holdings table renderer
 internal/repl/            Bubbletea REPL, dispatcher, history, banner
 internal/version/         Build-stamped version string
 sprints/                  Per-sprint feature specs and technical plans

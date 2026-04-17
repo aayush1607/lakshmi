@@ -66,7 +66,7 @@ func TestDispatcherUnknownSlashCommand(t *testing.T) {
 	if r.Quit {
 		t.Fatal("unknown command must not quit")
 	}
-	if !strings.Contains(r.Output, "unknown command") {
+	if !strings.Contains(strings.ToLower(r.Output), "unknown command") {
 		t.Fatalf("expected 'unknown command' message, got: %s", r.Output)
 	}
 }

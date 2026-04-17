@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	kiteconnect "github.com/zerodha/gokiteconnect/v4"
@@ -45,6 +46,7 @@ type kiteAPI interface {
 	GetLoginURL() string
 	GenerateSession(requestToken, apiSecret string) (kiteconnect.UserSession, error)
 	SetAccessToken(token string)
+	GetHoldings() (kiteconnect.Holdings, error)
 }
 
 // Option configures a Client.
@@ -71,6 +73,9 @@ type Client struct {
 	kite        kiteAPI
 	openBrowser func(string) error
 	now         func() time.Time
+
+	authMu   sync.Mutex
+	authUser string // user id the current kite client is hydrated for; empty = not hydrated
 }
 
 // New builds a Client. The real gokiteconnect client is used by default;
@@ -123,7 +128,86 @@ func (c *Client) Logout() error {
 // Holdings is implemented in F1.3; for F1.2 it returns ErrNotImplemented
 // so the interface compiles and the error is explicit.
 func (c *Client) Holdings(ctx context.Context) ([]broker.Holding, error) {
-	return nil, broker.ErrNotImplemented
+	if err := c.ensureAuthenticated(); err != nil {
+		return nil, err
+	}
+
+	// Kite's SDK call is synchronous; run it in a goroutine so Context
+	// cancellation (Ctrl-C in the REPL) actually interrupts the wait.
+	type result struct {
+		h   kiteconnect.Holdings
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		h, err := c.kite.GetHoldings()
+		done <- result{h: h, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-done:
+		if r.err != nil {
+			return nil, fmt.Errorf("kite holdings: %w", r.err)
+		}
+		return mapHoldings(r.h), nil
+	}
+}
+
+// ensureAuthenticated hydrates the underlying kite client with the access
+// token from the keychain on first use (or whenever the stored session
+// user changes). It is safe to call from multiple goroutines.
+func (c *Client) ensureAuthenticated() error {
+	c.authMu.Lock()
+	defer c.authMu.Unlock()
+
+	sess, err := c.sessions.Load()
+	if err != nil {
+		return err // ErrNotLoggedIn or a real I/O error
+	}
+	if !sess.Active(c.now()) {
+		return broker.ErrSessionExpired
+	}
+	if c.authUser == sess.UserID {
+		return nil // already hydrated
+	}
+	tok, err := c.tokens.Get(string(broker.ProviderZerodha))
+	if err != nil {
+		if errors.Is(err, broker.ErrNoToken) {
+			// Session file says logged in but the token is gone — treat
+			// as not logged in so the user is sent back to /login.
+			return broker.ErrNotLoggedIn
+		}
+		return fmt.Errorf("read token: %w", err)
+	}
+	c.kite.SetAccessToken(tok)
+	c.authUser = sess.UserID
+	return nil
+}
+
+// mapHoldings converts Kite's holding shape into our broker.Holding.
+// Zero-quantity holdings (fully sold but still in the response) are
+// filtered out so the table doesn't show noise.
+func mapHoldings(in kiteconnect.Holdings) []broker.Holding {
+	out := make([]broker.Holding, 0, len(in))
+	for _, h := range in {
+		qty := h.Quantity + h.T1Quantity // include T+1 shares user will receive
+		if qty <= 0 {
+			continue
+		}
+		out = append(out, broker.Holding{
+			Symbol:   h.Tradingsymbol,
+			Exchange: h.Exchange,
+			ISIN:     h.ISIN,
+			Quantity: qty,
+			AvgCost:  h.AveragePrice,
+			LTP:      h.LastPrice,
+			Close:    h.ClosePrice,
+			Product:  h.Product,
+		})
+	}
+	return out
 }
 
 // Login runs the OAuth-style browser flow. It blocks until the user

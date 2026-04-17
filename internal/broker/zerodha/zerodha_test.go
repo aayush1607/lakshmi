@@ -31,6 +31,8 @@ type fakeKite struct {
 	gotReqToken string
 	gotSecret   string
 	accessToken string
+	holdings    kiteconnect.Holdings
+	holdingsErr error
 }
 
 func (f *fakeKite) GetLoginURL() string { return f.loginURL }
@@ -42,7 +44,8 @@ func (f *fakeKite) GenerateSession(rt, sec string) (kiteconnect.UserSession, err
 	}
 	return f.session, nil
 }
-func (f *fakeKite) SetAccessToken(t string) { f.accessToken = t }
+func (f *fakeKite) SetAccessToken(t string)                          { f.accessToken = t }
+func (f *fakeKite) GetHoldings() (kiteconnect.Holdings, error)       { return f.holdings, f.holdingsErr }
 
 // pickPort asks the kernel for a free port, then immediately releases it.
 // There is a theoretical race window with something else binding it

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/aayush1607/lakshmi/internal/shaper"
 )
 
 // Response is what a Handler returns: text to print plus an optional
@@ -41,6 +43,13 @@ type Dispatcher struct {
 	// is the "unknown command" message; from F1.5 onwards it routes to the
 	// agent loop for free-form text.
 	fallback Handler
+
+	// shortcut, if set, is consulted before any slash-command lookup
+	// when the input is a bare positive integer like "1" or "2". The
+	// returned string is then re-dispatched as if the user had typed
+	// it. This powers the F1.6 numbered "📎 next: [1] /p --by pnl"
+	// shortcut: the user types `1` and we run the cached action.
+	shortcut func(n int) (string, bool)
 }
 
 // NewDispatcher builds a dispatcher and registers the built-in commands
@@ -69,11 +78,29 @@ func (d *Dispatcher) Register(cmd Command, h Handler) {
 	d.handlers[cmd.Name] = h
 }
 
+// RegisterAlias adds a handler under a name that is NOT shown in /help.
+// Useful for short/vim-style aliases ("/p" -> "/portfolio") without
+// cluttering the command listing.
+func (d *Dispatcher) RegisterAlias(name string, h Handler) {
+	if name == "" || h == nil {
+		return
+	}
+	d.handlers[name] = h
+}
+
 // SetFallback replaces the free-form-text handler.
 func (d *Dispatcher) SetFallback(h Handler) {
 	if h != nil {
 		d.fallback = h
 	}
+}
+
+// SetShortcutResolver wires the bare-integer shortcut. resolver(n)
+// should return the command string to run for the user's "n", or
+// (_, false) if there's no shortcut bound to that index right now.
+// Pass nil to disable.
+func (d *Dispatcher) SetShortcutResolver(resolver func(n int) (string, bool)) {
+	d.shortcut = resolver
 }
 
 // Commands returns the registered commands sorted by name.
@@ -91,6 +118,17 @@ func (d *Dispatcher) Dispatch(input string) Response {
 	if trimmed == "" {
 		return Response{}
 	}
+	// Bare integer? Try the shortcut resolver first. We deliberately
+	// check this BEFORE handler lookup so the user can't accidentally
+	// shadow a number with a command (none exist today, but the rule
+	// keeps the shortcut predictable).
+	if d.shortcut != nil {
+		if n, ok := parsePositiveInt(trimmed); ok {
+			if cmd, ok := d.shortcut(n); ok {
+				return d.Dispatch(cmd)
+			}
+		}
+	}
 	// Extract the first word to look up the handler; args are the rest.
 	name := trimmed
 	if i := strings.IndexAny(trimmed, " \t"); i >= 0 {
@@ -105,27 +143,54 @@ func (d *Dispatcher) Dispatch(input string) Response {
 	return d.fallback(trimmed)
 }
 
+// parsePositiveInt returns (n, true) when s is a positive base-10 int
+// in the range [1, 99]. We cap at 99 so a user pasting a large number
+// (e.g. an order ID) doesn't accidentally hit the shortcut path.
+func parsePositiveInt(s string) (int, bool) {
+	if s == "" || len(s) > 2 {
+		return 0, false
+	}
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	if n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
 func (d *Dispatcher) help(_ string) Response {
 	var b strings.Builder
-	b.WriteString("Available commands:\n")
+	b.WriteString(StyleAccent.Render("Available commands:") + "\n")
 	for _, c := range d.Commands() {
 		b.WriteString("  ")
-		b.WriteString(c.Name)
+		b.WriteString(StylePrompt.Render(c.Name))
 		b.WriteString(strings.Repeat(" ", max(2, 14-len(c.Name))))
-		b.WriteString(c.Summary)
+		b.WriteString(StyleHint.Render(c.Summary))
 		b.WriteString("\n")
 	}
 	return Response{Output: b.String()}
 }
 
 func exitCommand(_ string) Response {
-	return Response{Output: "Goodbye.\n", Quit: true}
+	return Response{Output: StyleAccent.Render("Goodbye.") + "\n", Quit: true}
 }
 
 func unknownCommand(input string) Response {
-	return Response{
-		Output: "unknown command: " + input + " — try /help\n",
+	// Render through the shaper so unknown-commands look like every
+	// other answer (yellow verdict + a /help next-action). Keeps the
+	// "every answer is one shape" promise from F1.6.
+	ans := shaper.Answer{
+		Kind:        shaper.KindUnknown,
+		Verdict:     shaper.VerdictYellow,
+		VerdictText: "Unknown command: " + input,
+		NextActions: []string{"/help"},
 	}
+	return Response{Output: shaper.Render(ans, shaper.DefaultTheme(), false)}
 }
 
 func max(a, b int) int {

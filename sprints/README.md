@@ -23,10 +23,11 @@ Ship a working shell + a trustworthy answer loop over read-only data. No analyti
 ## Sprint 2 — Analysis Engines
 **Theme:** "A user can analyse any stock (TA + FA) and their own portfolio in depth, all grounded."
 
-Add the compute layer: local indicators, fundamentals pipeline, portfolio intelligence.
+Add the compute layer: local indicators, fundamentals pipeline, portfolio intelligence. The **planner loop (F2.0)** lands first because every downstream tool becomes dramatically more useful once the agent can choose and compose them on its own.
 
 | # | Feature | Outcome |
 |---|---|---|
+| [F2.0](sprint-2/F2.0-agentic-planner.md) | Agentic planner loop | Agent picks its own tools per question |
 | [F2.1](sprint-2/F2.1-nse-data-pipeline.md) | NSE OHLCV pipeline | Daily price history available offline |
 | [F2.2](sprint-2/F2.2-ta-command.md) | `/ta <ticker>` | Technical verdict + signals |
 | [F2.3](sprint-2/F2.3-chart-command.md) | `/chart <ticker>` | In-terminal price chart |
@@ -34,6 +35,7 @@ Add the compute layer: local indicators, fundamentals pipeline, portfolio intell
 | [F2.5](sprint-2/F2.5-peers-command.md) | `/peers <ticker>` | Peer ranking on canonical metrics |
 | [F2.6](sprint-2/F2.6-portfolio-health.md) | `/portfolio health` | Concentration, sector tilt, quality score |
 | [F2.7](sprint-2/F2.7-portfolio-rebalance.md) | `/portfolio rebalance` | Actionable trim/add suggestions |
+| [F2.8](sprint-2/F2.8-news-filings.md) | News, filings & symbol resolution tools | Agent can answer "why is X down?" |
 
 ---
 
