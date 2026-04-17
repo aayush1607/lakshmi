@@ -4,18 +4,28 @@
 
 A conversational, grounded stock-analysis terminal for Indian markets. Single Go binary, local-first, every claim cited.
 
-**Status:** 🚧 Sprint 1 in progress. See [`spec.md`](spec.md) for the product spec and [`sprints/README.md`](sprints/README.md) for the build plan.
+Lakshmi is a **thinking partner for the Indian investor**. You type a question, it plans a small set of tool calls against your broker and public market data, and it returns a one-line verdict → a few supporting bullets → the raw detail on request → the sources behind every number. No claim reaches the screen without a citation. When the data can't support an answer, it refuses — on purpose.
+
+The product is opinionated about three things:
+
+- **Grounding is structural, not advisory.** Every factual claim carries an inline `[n]` citation; ungrounded answers are rejected by the agent before they reach you.
+- **Local-first.** Your Kite token lives in the OS keychain. Your holdings and prices live under `~/.lakshmi/`. Nothing is uploaded anywhere.
+- **One visual grammar.** Every answer — portfolio totals, free-form Q&A, errors, unknown commands — renders as Verdict → Why → Detail → Sources → Confidence → Next. The layout is the product.
+
+**Status:** ✅ Sprint 1 shipped. Planning Sprint 2 (analysis engines + agentic planner). See [`spec.md`](spec.md) for the product spec and [`sprints/README.md`](sprints/README.md) for the build plan.
 
 ## What ships today
 
 | Feature | Status | What it does |
 |---|---|---|
-| F1.1 REPL shell | ✅ | `₹ ›` prompt, history (↑/↓), `/help`, `/exit`, `:q` |
-| F1.2 Zerodha login | ✅ | Browser OAuth via Kite Connect, token in OS keychain |
-| F1.3 Portfolio view | ✅ | `/portfolio` — holdings table with sort, totals, market-hours note |
-| F1.4 Local cache | ✅ | `~/.lakshmi/data/` cache with `--fresh` / `--no-cache`, `/cache` controls |
-| F1.5 Grounded ask | ✅ | `/ask`, free-form questions, `/why` trace, refusal when ungrounded |
-| F1.6+ | 🔜 | Verdict card, report export |
+| F1.1 REPL shell | ✅ | `₹ ›` prompt with history (↑/↓), `/help`, `/exit`, `:q`, inline-mode transcript that plays nicely with native scroll and copy‐paste |
+| F1.2 Zerodha login | ✅ | Browser OAuth via Kite Connect, token in OS keychain, loopback callback on 127.0.0.1 |
+| F1.3 Portfolio view | ✅ | `/portfolio` — holdings table with sort (`--by weight\|pnl\|symbol`), totals, live vs post-close note |
+| F1.4 Local cache | ✅ | `~/.lakshmi/data/` JSON cache with per-namespace freshness rules, `--fresh` / `--no-cache`, `/cache` controls |
+| F1.5 Grounded ask | ✅ | `/ask`, free-form questions, `/why` trace, one-retry-then-refuse on bad citations |
+| F1.6 Universal verdict format | ✅ | Every answer: 🟢/🟡/🔴 verdict → why bullets → detail (collapses past 20 lines, `more` to expand) → sources → deterministic confidence → numbered next actions (type `1`/`2` to run) |
+
+**Sprint 1 complete.** Next up is **Sprint 2** — an agentic planner loop that picks its own tools per question ([F2.0](sprints/sprint-2/F2.0-agentic-planner.md)), the NSE OHLCV pipeline, and `/ta` / `/fa` / `/peers` commands. See [`sprints/README.md`](sprints/README.md).
 
 ## Quick start (dev)
 
@@ -168,11 +178,14 @@ Or inside the REPL, either form works:
 ₹ › what's my IT exposure?
 ```
 
-You get:
+You get the **universal verdict format** (F1.6):
 
-- a 1–3 sentence answer with inline `[1]`, `[2]` citations,
-- a **Sources** block with tier labels (1 = official, 2 = broker, 3 = derived),
-- a **Confidence** line (high / medium / low).
+- a **verdict line** — 🟢 / 🟡 / 🔴 and a one-sentence headline with inline `[n]` citations,
+- **Why** — up to 3 short bullets backing the verdict, each with its own citations,
+- **Detail** — the long-form payload (tables, prose); collapses past 20 lines and expands with `more`,
+- **Sources** — tier-labelled (1 = official, 2 = broker, 3 = derived) with primary-source URLs,
+- **Confidence** — a deterministic 0–99% score derived from source mix + recency (not the model's self-rating),
+- **Next** — 1–2 suggested follow-up commands. Type `1` or `2` to run them without retyping.
 
 Follow-ups inherit session context:
 
@@ -195,11 +208,11 @@ Prints every tool that ran, how long it took, and the token cost of the LLM call
 If no grounded source supports an answer, Lakshmi says so instead of guessing:
 
 ```
-I don't have a source for that.
-(why: no tool returned data relevant to the question)
+🔴  I don't have a source for that.
+  • no tool returned data relevant to the question
 ```
 
-This is by design. Sprint 2 adds more tools (quotes, filings, news); until then, questions outside "holdings + trivial sectors + time" will often refuse.
+This is by design. Sprint 2 adds the agentic planner loop and more tools (quotes, filings, news); until then, questions outside "holdings + trivial sectors + time" will often refuse.
 
 
 ## Why Kite Connect (and not an MCP or scraper)
@@ -240,12 +253,13 @@ internal/broker/          Broker interface, session store, keyring token store
 internal/broker/zerodha/  Kite Connect client (login flow, holdings)
 internal/cache/           File-backed local cache with per-namespace freshness rules
 internal/agent/           Grounded question-answering loop (plan/fetch/reason/shape + trace)
+internal/shaper/          Universal verdict renderer (F1.6) — pure, theme-able, golden-testable
 internal/llm/             Chat-completion client (Azure AI Foundry)
 internal/tools/           Tool interface + Sprint 1 tools (holdings, sector, time)
 internal/config/          Env-based config loader
 internal/paths/           ~/.lakshmi/ layout
-internal/portfolio/       Holdings table renderer
-internal/repl/            Bubbletea REPL, dispatcher, history, banner
+internal/portfolio/       Holdings table renderer + shaper adapter
+internal/repl/            Bubbletea REPL, dispatcher, history, banner, numbered shortcuts
 internal/version/         Build-stamped version string
 sprints/                  Per-sprint feature specs and technical plans
 ```
@@ -259,27 +273,6 @@ make tidy       # go mod tidy
 make install    # install to $GOPATH/bin for convenience
 make clean      # remove ./bin
 ```
-
----
-
-🪷 May your alpha be abundant.
-# 🪷 lakshmi.sh
-
-> wealth, intelligently.
-
-A conversational, grounded stock-analysis terminal for Indian markets. Single Go binary, local-first, every claim cited.
-
-**Status:** 🚧 Sprint 1 in progress. See [`spec.md`](spec.md) for the product spec and [`sprints/README.md`](sprints/README.md) for the build plan.
-
-## Quick start (dev)
-
-```bash
-make build      # produces bin/lakshmi
-./bin/lakshmi   # launches the REPL — type /help
-make test       # run all tests
-```
-
-Requires Go 1.22+.
 
 ---
 
