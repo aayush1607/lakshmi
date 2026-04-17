@@ -3,16 +3,18 @@ package repl
 import (
 	"sort"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Response is what a Handler returns: text to print plus an optional
-// instruction to quit the REPL. More fields (source-blocks, next-actions)
-// will arrive when the shaper lands in F1.6; for Sprint 1 F1.1 this is
-// deliberately minimal so the REPL can echo output without knowing what
-// other commands look like.
+// instruction to quit the REPL, and an optional tea.Cmd to run after
+// the handler's Output is rendered. Long-running work (login, holdings,
+// LLM calls) lives behind Follow so the REPL stays responsive.
 type Response struct {
 	Output string
 	Quit   bool
+	Follow tea.Cmd
 }
 
 // Handler handles a single dispatched input line.

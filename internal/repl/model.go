@@ -55,6 +55,13 @@ type Model struct {
 // clean glyph in every terminal (no emoji font quirks).
 const promptSymbol = "₹ › "
 
+// TranscriptMsg asks the REPL to append a line to the transcript from an
+// asynchronous tea.Cmd (e.g. a completed login flow). The trailing newline
+// is added automatically if missing.
+type TranscriptMsg struct {
+	Text string
+}
+
 // New builds a new Model. It does not start the program; call tea.NewProgram
 // with it, or use Run for a convenience wrapper.
 func New(opts Options) *Model {
@@ -92,6 +99,14 @@ func (m *Model) Init() tea.Cmd { return textinput.Blink }
 // Update satisfies tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case TranscriptMsg:
+		text := msg.Text
+		if text != "" && !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		m.appendTranscript(text)
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -180,7 +195,7 @@ func (m *Model) submit(line string) (tea.Model, tea.Cmd) {
 	if resp.Quit {
 		return m, tea.Quit
 	}
-	return m, nil
+	return m, resp.Follow
 }
 
 func (m *Model) appendTranscript(s string) {

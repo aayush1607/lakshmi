@@ -46,6 +46,10 @@ func main() {
 		},
 	})
 
+	root.AddCommand(newLoginCmd())
+	root.AddCommand(newLogoutCmd())
+	root.AddCommand(newSessionCmd())
+
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
@@ -61,6 +65,7 @@ func runREPL() error {
 		return fmt.Errorf("load history: %w", err)
 	}
 	disp := repl.NewDispatcher()
+	registerBrokerHandlers(disp)
 	disp.SetFallback(func(input string) repl.Response {
 		// Sprint 1 stub. F1.5 replaces this with the agent loop.
 		return repl.Response{

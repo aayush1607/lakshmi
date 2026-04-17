@@ -41,6 +41,11 @@ func HistoryFile() string { return filepath.Join(Home(), "history") }
 // ConfigFile returns the path to the user's YAML config.
 func ConfigFile() string { return filepath.Join(Home(), "config.yaml") }
 
+// SessionFile returns the path to the persisted broker session metadata.
+// The access token does NOT live here — only non-secret fields (user id,
+// expiry, fetched_at). Secrets belong in the OS keychain.
+func SessionFile() string { return filepath.Join(Home(), "session.json") }
+
 // EnsureHome creates the root directory (and common subdirectories) with
 // restrictive permissions (0700) if it does not already exist. Safe to call
 // on every startup; it is a no-op when the directories already exist.

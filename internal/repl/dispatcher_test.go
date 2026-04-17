@@ -93,7 +93,7 @@ func TestDispatcherFallbackHandlesFreeText(t *testing.T) {
 func TestDispatcherEmptyInputIsNoOp(t *testing.T) {
 	d := NewDispatcher()
 	r := d.Dispatch("   ")
-	if r != (Response{}) {
+	if r.Output != "" || r.Quit || r.Follow != nil {
 		t.Fatalf("expected zero Response for empty input, got %+v", r)
 	}
 }
